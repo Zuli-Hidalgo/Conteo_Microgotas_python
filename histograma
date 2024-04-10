@@ -1,0 +1,134 @@
+import cv2
+import numpy as np
+from matplotlib import pyplot as plt
+import tkinter as tk
+from tkinter import ttk
+import os
+from tkinter import filedialog as fd
+from tkinter.messagebox import showinfo
+from scipy import fftpack
+from PIL import Image
+
+
+class ImageSelectorApp:
+    def __init__(self, master):
+        self.master = master
+        self.master.title("Image Selector")
+        self.master.resizable(False, False)
+
+        self.label = tk.Label(master, text="Choose Image:")
+        self.label.pack()
+
+        self.image_path_var = tk.StringVar()
+        self.image_path_label = tk.Label(master, textvariable=self.image_path_var)
+        self.image_path_label.pack()
+
+        self.select_button = tk.Button(master, text="Select Image", command=self.select_image, font="Helvetica 12", width=35, height=3)
+        self.select_button.pack(pady=10)
+
+        self.selected_image_path = None
+
+    def select_image(self):
+        image_path = fd.askopenfilename(title="Select an image", filetypes=[("Image Files", "*.png *.jpg *.jpeg *.gif")])
+        if image_path:
+            self.image_path_var.set(image_path)
+            self.selected_image_path = image_path
+
+def main():
+    root = tk.Tk()
+    app = ImageSelectorApp(root)
+    root.mainloop()
+
+    path = app.selected_image_path
+    if not path:
+        print("No image selected.")
+        return
+
+    img = cv2.imread(path, cv2.IMREAD_COLOR)
+    img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+    copia = cv2.resize(img, (1000, 700), interpolation=cv2.INTER_AREA)
+
+    b, enhanced_green, r = cv2.split(copia)
+    alpha = 1.9
+    beta = 0
+    enhanced_green = cv2.convertScaleAbs(enhanced_green, alpha=alpha, beta=beta)
+    
+    _, th = cv2.threshold(enhanced_green, 150, 255, cv2.THRESH_BINARY)
+
+    g2 = cv2.medianBlur(th, 3)
+    g2 = cv2.Canny(g2, 0, 10)
+    g2 = cv2.dilate(g2, None, iterations=1)
+    g2 = cv2.erode(g2, None, iterations=1)
+
+    detected_circles = cv2.HoughCircles(enhanced_green, cv2.HOUGH_GRADIENT, 1, 20, param1=100, param2=5, minRadius=5, maxRadius=12)
+
+    count = 0
+    tonalidades = []
+    if detected_circles is not None:
+        detected_circles = np.uint16(np.around(detected_circles))
+
+        for pt in detected_circles[0, :]:
+            a, b, r = pt[0], pt[1], pt[2]
+            count += 1
+
+            tonalidad = np.mean(copia[b - r:b + r, a - r:a + r])
+            tonalidades.append(tonalidad)
+
+    count3 = len(tonalidades)
+    print("El total de gotas es:", f"{count3}")
+
+    img2 = cv2.imread(path, cv2.IMREAD_COLOR)
+    img2 = cv2.rotate(img2, cv2.ROTATE_90_CLOCKWISE)
+    copia2 = cv2.resize(img2, (1000, 700), interpolation=cv2.INTER_AREA)
+
+    b3, g3 , r3  = cv2.split(copia2)
+    alpha = 1.9
+    beta = 0
+
+    g3 = cv2.convertScaleAbs(g3, alpha=alpha, beta=beta)
+
+    _, th2 = cv2.threshold(g3, 90, 255, cv2.THRESH_BINARY)
+
+    g4 = cv2.medianBlur(th2, 3)
+    g4 = cv2.Canny(g4, 0, 10)
+    g4 = cv2.dilate(g4, None, iterations=1)
+    g4 = cv2.erode(g4, None, iterations=1)
+
+    detected_circles3 = cv2.HoughCircles(g4, cv2.HOUGH_GRADIENT, 1, 20, param1=100, param2=10, minRadius=5, maxRadius=12)
+
+    count2 = 0
+    if detected_circles3 is not None:
+        detected_circles3 = np.uint16(np.around(detected_circles3))
+
+        for pt in detected_circles3[0, :]:
+            count2 += 1
+
+    ratio = count / count2 if count2 != 0 else 0
+
+    cv2.destroyAllWindows()
+
+    # Crear histograma de tonalidades
+    plt.figure()
+    # Definir umbrales para categorizar las tonalidades
+    umbral1 = 20
+    umbral2 = 70
+    
+    # Separar tonalidades en diferentes categorías basadas en los umbrales
+    tonalidades_bajas = [tono for tono in tonalidades if tono <= umbral1]
+    tonalidades_medias = [tono for tono in tonalidades if umbral1 < tono <= umbral2]
+    tonalidades_altas = [tono for tono in tonalidades if tono > umbral2]
+    
+    # Crear histogramas separados para cada categoría
+    plt.hist(tonalidades_bajas, bins=30, color='blue', alpha=0.5, label='Tonalidades Bajas')
+    plt.hist(tonalidades_medias, bins=30, color='green', alpha=0.5, label='Tonalidades Medias')
+    plt.hist(tonalidades_altas, bins=30, color='red', alpha=0.5, label='Tonalidades Altas')
+
+    plt.title('Histograma de Tonalidades de las Gotas')
+    plt.xlabel('Tonalidad')
+    plt.ylabel('Número de Gotas')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+if __name__ == "__main__":
+    main()
